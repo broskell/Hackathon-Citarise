@@ -274,7 +274,7 @@ function applyTheme(t) {
   const ic = $("#themeToggle .material-symbols-rounded");
   if (ic) ic.textContent = t === "light" ? "dark_mode" : "light_mode"; // show what you'll switch TO
 }
-let theme = (() => { try { return localStorage.getItem(THEME_KEY) || "dark"; } catch (e) { return "dark"; } })();
+let theme = (() => { try { return localStorage.getItem(THEME_KEY) || "light"; } catch (e) { return "light"; } })();
 applyTheme(theme);
 $("#themeToggle").addEventListener("click", () => {
   theme = theme === "light" ? "dark" : "light";

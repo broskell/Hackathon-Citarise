@@ -334,16 +334,26 @@ def parse_exception(raw_input: str, source_type: str = "email") -> dict:
     """Extract the shipment id + exception type from a raw exception artifact.
 
     Handles unstructured email prose, semi-structured JSON webhooks, and OCR text
-    off a photo. Uses the LLM for robust extraction under ambiguity, and falls
-    back to a regex/keyword net if the model output is unusable.
+    off a photo.
+
+    EFFICIENCY: deterministic-first. The cheap regex/keyword extractor runs first;
+    the LLM is invoked ONLY when the fixed rules are uncertain (no shipment id, or
+    an unrecognized exception type). This is precisely "AI where fixed rules fail"
+    -- it demonstrates AI necessity on ambiguous input while saving a full LLM call
+    on clean input (typically one fewer model call per run).
 
     Args:
         raw_input: The raw artifact text (email body, JSON payload, or OCR text).
         source_type: One of "email", "webhook_json", "ocr_text".
     """
-    from llm import chat  # local import avoids any import-time coupling
-
     fallback = _regex_parse(raw_input)
+    # Fast path: rules are confident -> no LLM call needed.
+    if fallback["shipment_id"] and fallback["exception_type"] != "OTHER":
+        fallback["ok"] = True
+        return fallback
+
+    # Ambiguous -> escalate to the LLM (with the regex result as the fallback).
+    from llm import chat  # local import avoids any import-time coupling
     try:
         prompt = (
             "You are an extraction engine for a logistics operations system. "

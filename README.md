@@ -322,6 +322,17 @@ The spec's six visibility requirements are **first-class UI**, not logs:
 
 ---
 
+## Efficiency
+
+Cost and latency are controlled deliberately, not incidentally:
+
+- **Model selection** — small, cost-effective models (`gemini-2.5-flash` / Groq `gpt-oss-20b`), not a frontier model, for a structured tool-selection task.
+- **Provider failover** — `llm.py` transparently falls Gemini → Groq, so a rate-limited or down provider never stalls a run (and never wastes a retry on the same dead endpoint).
+- **Fewer model calls** — extraction is **deterministic-first**: the regex/keyword extractor resolves clean artifacts with **zero LLM calls**, and the model is invoked only on genuinely ambiguous input. That's typically **one fewer LLM call per run**.
+- **Compact context** — tool observations are truncated (`_summarize`, 1200 chars) so the resent conversation stays small across turns; one tool call per turn keeps the loop bounded (`MAX_ITERS=12`).
+- **O(1) data access** — the logistics store is **index-backed** (`ship_by_order`, `orders_by_customer`, `carriers_by_region`, `ship_by_tracking`) — no table scans.
+- **No wasted work** — a permanently-failed action is never retried (fail-fast), and idempotent tools collapse duplicate calls.
+
 ## Requirements coverage
 
 <details>
@@ -348,7 +359,7 @@ The spec's six visibility requirements are **first-class UI**, not logs:
 | Agent takes action | `dispatch` executes real tools; DB mutates |
 | Dynamic tool usage | 3 different paths |
 | Verifiable execution | surfaced `state_diff` |
-| Efficiency | Gemini→Groq failover · `MAX_ITERS=12` · one tool/turn · indexed lookups |
+| Efficiency | small cost-effective models + Gemini→Groq **failover** · **deterministic-first extraction** (LLM only on ambiguity → ~1 fewer call/run) · compact/truncated tool observations · **O(1) indexed** DB lookups · one tool/turn, `MAX_ITERS=12` |
 | Reliability | never-raise tools · retry · failover · Nominatim + vision + regex fallbacks |
 | Safety & human oversight | LIVE gate + `issue_credit` approval threshold + escalation |
 
