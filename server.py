@@ -44,6 +44,7 @@ def meta():
         if sc["source_type"] == "ocr_text":
             item["artifact_kind"] = "image"
             item["artifact"] = "/assets/label_SHP-3003.png"
+            item["ocr_text"] = logistics.RAW_PHOTO_TEXT_C  # editable OCR override
         else:
             item["artifact_kind"] = "text"
             item["artifact"] = sc["artifact"]

@@ -40,7 +40,6 @@ APPROVAL_THRESHOLD_USD = float(os.getenv("APPROVAL_THRESHOLD_USD", "100"))
 REQUIRE_APPROVAL = os.getenv("REQUIRE_APPROVAL", "0") == "1"
 
 # --- keys ---
-TAVILY_API_KEY = os.getenv("TAVILY_API_KEY", "").strip()
 RESEND_API_KEY = os.getenv("RESEND_API_KEY", "").strip()
 RESEND_FROM = os.getenv("RESEND_FROM", "onboarding@resend.dev").strip()
 TWILIO_ACCOUNT_SID = os.getenv("TWILIO_ACCOUNT_SID", "").strip()
@@ -59,34 +58,7 @@ def _warn(msg):
 
 
 # ==========================================================================
-# 1) web_search -- Tavily
-# ==========================================================================
-def web_search(query: str, max_results: int = 5) -> dict:
-    """Search the live web with Tavily and return a short list of results.
-
-    Args:
-        query: The search query.
-        max_results: How many results to return (default 5).
-    """
-    if not TAVILY_API_KEY:
-        _warn("TAVILY_API_KEY not set -- web_search disabled")
-        return {"ok": False, "error": "TAVILY_API_KEY not set", "results": []}
-    try:
-        from tavily import TavilyClient
-
-        client = TavilyClient(api_key=TAVILY_API_KEY)
-        resp = client.search(query=query, max_results=max_results, include_answer=True)
-        results = [
-            {"title": r.get("title"), "url": r.get("url"), "content": (r.get("content") or "")[:500]}
-            for r in resp.get("results", [])
-        ]
-        return {"ok": True, "answer": resp.get("answer"), "results": results}
-    except Exception as e:
-        return {"ok": False, "error": f"{type(e).__name__}: {e}", "results": []}
-
-
-# ==========================================================================
-# 2) send_whatsapp -- Twilio
+# send_whatsapp -- Twilio
 # ==========================================================================
 def send_whatsapp(to: str, body: str) -> dict:
     """Send a WhatsApp message via Twilio.
@@ -202,80 +174,6 @@ def extract_from_document(file_path: str, prompt: str = "") -> dict:
         return {"ok": True, "source": "gemini_vision", "text": text}
     except Exception as e:
         return _cache_fallback(f"{type(e).__name__}: {e}")
-
-
-# ==========================================================================
-# 5) rag_search + rag_add -- in-memory ChromaDB with Gemini embeddings
-# ==========================================================================
-_collection = None
-_EMBED_MODEL = os.getenv("GEMINI_EMBED_MODEL", "gemini-embedding-001")
-
-
-def _embed(texts):
-    """Embed a list of strings with Gemini; returns list[list[float]] or None on failure."""
-    from google import genai
-
-    client = genai.Client(api_key=GEMINI_API_KEY)
-    resp = client.models.embed_content(model=_EMBED_MODEL, contents=texts)
-    return [e.values for e in resp.embeddings]
-
-
-def _get_collection():
-    global _collection
-    if _collection is None:
-        import chromadb
-
-        # Ephemeral in-memory client -- perfect for a demo, nothing to clean up.
-        client = chromadb.EphemeralClient()
-        _collection = client.get_or_create_collection("rag")
-    return _collection
-
-
-def rag_add(texts) -> dict:
-    """Load documents into the in-memory RAG store.
-
-    Args:
-        texts: A string or list of strings to index.
-    """
-    if not GEMINI_API_KEY:
-        _warn("GEMINI_API_KEY not set -- rag_add disabled")
-        return {"ok": False, "error": "GEMINI_API_KEY not set", "added": 0}
-    if isinstance(texts, str):
-        texts = [texts]
-    texts = [t for t in texts if t and t.strip()]
-    if not texts:
-        return {"ok": False, "error": "no non-empty texts", "added": 0}
-    try:
-        col = _get_collection()
-        base = col.count()
-        embeddings = _embed(texts)
-        ids = [f"doc-{base + i}" for i in range(len(texts))]
-        col.add(ids=ids, documents=texts, embeddings=embeddings)
-        return {"ok": True, "added": len(texts), "total": col.count()}
-    except Exception as e:
-        return {"ok": False, "error": f"{type(e).__name__}: {e}", "added": 0}
-
-
-def rag_search(query: str, k: int = 3) -> dict:
-    """Semantic search over documents previously loaded with rag_add.
-
-    Args:
-        query: The question / search text.
-        k: Number of chunks to return (default 3).
-    """
-    if not GEMINI_API_KEY:
-        _warn("GEMINI_API_KEY not set -- rag_search disabled")
-        return {"ok": False, "error": "GEMINI_API_KEY not set", "matches": []}
-    try:
-        col = _get_collection()
-        if col.count() == 0:
-            return {"ok": True, "matches": [], "note": "RAG store is empty -- call rag_add first"}
-        q_emb = _embed([query])
-        res = col.query(query_embeddings=q_emb, n_results=min(k, col.count()))
-        docs = (res.get("documents") or [[]])[0]
-        return {"ok": True, "matches": docs}
-    except Exception as e:
-        return {"ok": False, "error": f"{type(e).__name__}: {e}", "matches": []}
 
 
 # ==========================================================================
@@ -714,10 +612,9 @@ def notify_customer(shipment_id: str, channel: str, message: str) -> dict:
 # ==========================================================================
 # Registry -- schemas the LLM sees + name->fn map for the agent loop
 # --------------------------------------------------------------------------
-# ACTIVE list = the logistics toolset. web_search / rag_search / rag_add /
-# send_whatsapp / send_email remain defined above (send_* are used by
-# notify_customer) but are intentionally kept OUT of TOOLS so the agent isn't
-# distracted by irrelevant tools -- this sharpens dynamic tool selection.
+# TOOLS is the full logistics toolset the agent selects from. send_whatsapp /
+# send_email stay defined above (used internally by notify_customer) but are kept
+# OUT of TOOLS -- the agent notifies via the gated notify_customer, not raw sends.
 # ==========================================================================
 _ENUM_REASON = ["delay", "failed_delivery", "goodwill", "damage"]
 _ENUM_PRIORITY = ["low", "medium", "high", "urgent"]
@@ -896,8 +793,7 @@ TOOLS = [
     },
 ]
 
-# name -> callable (used by agent.py). Includes tools NOT in the active TOOLS
-# list (send_*, web_search, rag_*) so they can still be dispatched if referenced.
+# name -> callable (used by agent.py to run a chosen tool).
 DISPATCH = {
     "parse_exception": parse_exception,
     "extract_from_document": extract_from_document,
@@ -913,11 +809,6 @@ DISPATCH = {
     "escalate_to_human": escalate_to_human,
     "verify_shipment": verify_shipment,
     "notify_customer": notify_customer,
-    # still available, just not advertised to the model:
-    "web_search": web_search,
-    "send_whatsapp": send_whatsapp,
-    "send_email": send_email,
-    "rag_search": rag_search,
 }
 
 # State-changing tool names -- agent.py uses this to enforce verify-before-finish.

@@ -85,26 +85,33 @@ function setScenario(key) {
   $("#srcPill").textContent = SRC_LABEL[s.source_type] || s.source_type;
   const art = $("#artifact");
 
-  if (s.artifact_kind === "image") {
-    art.innerHTML = `<img src="${s.artifact}" alt="damaged label"/>
-      <div class="photo-note">A photograph — no machine-readable fields. The agent must OCR it (extract_from_document) before it can act.</div>`;
-  } else {
-    // Editable: the agent runs on whatever is in the box. Edits persist per
-    // scenario across tab switches (EDITS map), so switching away won't lose them.
-    art.innerHTML = `<textarea class="artifact-edit" id="artifactEdit" spellcheck="false"></textarea>
-      <div class="artifact-foot"><span>${icon("edit_note")} Editable — the agent runs on this text.</span>
-      <button class="reset-art" id="resetArt">reset to demo</button></div>`;
-    const ta = $("#artifactEdit");
-    ta.value = (key in EDITS) ? EDITS[key] : s.artifact;
-    const reset = $("#resetArt");
-    const sync = () => {
-      EDITS[key] = ta.value;
-      reset.style.display = (ta.value.trim() !== s.artifact.trim()) ? "inline" : "none";
-    };
-    ta.addEventListener("input", sync);
-    reset.addEventListener("click", () => { ta.value = s.artifact; delete EDITS[key]; sync(); });
-    sync();
-  }
+  // The editable text the agent will run on. For text scenarios it's the
+  // artifact itself; for the photo scenario it's an OCR override (leave it as-is
+  // to OCR the live photo, or edit it to feed custom "extracted" text).
+  const original = (s.artifact_kind === "image") ? (s.ocr_text || "") : s.artifact;
+  const isImage = s.artifact_kind === "image";
+  const label = isImage
+    ? `${icon("edit_note")} Editable OCR — leave as-is to run vision on the photo, or edit to feed custom text.`
+    : `${icon("edit_note")} Editable — the agent runs on this text.`;
+  const photo = isImage
+    ? `<img src="${s.artifact}" alt="damaged label"/>
+       <div class="photo-note">A photograph — no machine-readable fields. The agent OCRs it (extract_from_document), or uses your override below.</div>`
+    : "";
+
+  art.innerHTML = photo +
+    `<textarea class="artifact-edit${isImage ? " ocr" : ""}" id="artifactEdit" spellcheck="false"></textarea>
+     <div class="artifact-foot"><span>${label}</span>
+     <button class="reset-art" id="resetArt">reset to demo</button></div>`;
+  const ta = $("#artifactEdit");
+  ta.value = (key in EDITS) ? EDITS[key] : original;
+  const reset = $("#resetArt");
+  const sync = () => {
+    EDITS[key] = ta.value;
+    reset.style.display = (ta.value.trim() !== original.trim()) ? "inline" : "none";
+  };
+  ta.addEventListener("input", sync);
+  reset.addEventListener("click", () => { ta.value = original; delete EDITS[key]; sync(); });
+  sync();
   // reset result/trace (a fresh scenario starts clean)
   $("#resultPanel").innerHTML = "";
   resetTrace();
@@ -273,9 +280,12 @@ function run() {
   // If the editable artifact was changed, run on the CUSTOM text (live planner
   // only); if untouched, run the built-in scenario (which can replay-fallback).
   const s = META.scenarios[ACTIVE];
+  const original = (s.artifact_kind === "image") ? (s.ocr_text || "") : s.artifact;
   const ta = document.querySelector("#artifactEdit");
   let extra = "";
-  if (ta && ta.value.trim() && ta.value.trim() !== s.artifact.trim()) {
+  // Edited → run on the custom text (source_type carries the modality; for the
+  // photo that's ocr_text, so an edit skips vision and parses the text directly).
+  if (ta && ta.value.trim() && ta.value.trim() !== original.trim()) {
     extra = `&raw_input=${encodeURIComponent(ta.value)}&source_type=${encodeURIComponent(s.source_type)}`;
   }
   const es = new EventSource(`/api/run?scenario=${ACTIVE}&live=${live}${extra}`);

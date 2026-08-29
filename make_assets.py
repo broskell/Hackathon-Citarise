@@ -71,5 +71,39 @@ def main():
     print(f"wrote {OUT_PATH} ({img.size[0]}x{img.size[1]})")
 
 
+def make_favicons():
+    """Generate PNG + ICO favicons (the LODESTAR four-point star) into web/.
+    Rendered at 4x then downscaled for clean anti-aliasing."""
+    import math
+
+    web = "web"
+    os.makedirs(web, exist_ok=True)
+    TILE = (20, 18, 16, 255)      # dark tile
+    STAR = (224, 85, 43, 255)     # brand orange
+
+    def draw(size):
+        ss = 4
+        s = size * ss
+        img = Image.new("RGBA", (s, s), (0, 0, 0, 0))
+        d = ImageDraw.Draw(img)
+        d.rounded_rectangle([0, 0, s - 1, s - 1], radius=int(s * 0.22), fill=TILE)
+        c, R, r = s / 2, s * 0.44, s * 0.44 * 0.36
+        pts = []
+        for i in range(8):
+            ang = math.radians(i * 45 - 90)
+            rad = R if i % 2 == 0 else r
+            pts.append((c + rad * math.cos(ang), c + rad * math.sin(ang)))
+        d.polygon(pts, fill=STAR)
+        dot = s * 0.045
+        d.ellipse([c - dot, c - dot, c + dot, c + dot], fill=TILE)
+        return img.resize((size, size), Image.LANCZOS)
+
+    draw(32).save(os.path.join(web, "favicon-32.png"))
+    draw(180).save(os.path.join(web, "apple-touch-icon.png"))
+    draw(64).save(os.path.join(web, "favicon.ico"), sizes=[(16, 16), (32, 32), (48, 48)])
+    print("wrote web/favicon-32.png, apple-touch-icon.png, favicon.ico")
+
+
 if __name__ == "__main__":
     main()
+    make_favicons()

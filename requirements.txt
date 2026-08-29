@@ -1,11 +1,12 @@
+# Full local dev deps. For deployment use requirements-deploy.txt (slim).
 google-genai
 groq
 python-dotenv
-streamlit
+requests
+fastapi
+uvicorn[standard]
 twilio
 resend
-tavily-python
-chromadb
-playwright
-requests
 pillow
+playwright        # dev only: capture_screens.py (README screenshots)
+streamlit         # legacy: the old app.py console (superseded by server.py + web/)
