@@ -57,11 +57,16 @@ def _sse(event: str, data) -> str:
 
 
 @app.get("/api/run")
-def run(scenario: str = "A", live: int = 0):
-    """Stream the agent run for a scenario as SSE: one `step` event per trace
-    step (live, as they happen), then a final `result` event, then `done`."""
+def run(scenario: str = "A", live: int = 0, raw_input: str = "", source_type: str = ""):
+    """Stream the agent run as SSE: one `step` event per trace step (live, as they
+    happen), then a final `result` event, then `done`.
+
+    If `raw_input` is provided, the agent runs on that CUSTOM artifact instead of
+    the built-in scenario. Custom runs need the live LLM planner (the deterministic
+    replay is scripted only for the built-in scenarios)."""
     if scenario not in logistics.SCENARIOS:
         return JSONResponse({"error": f"unknown scenario {scenario}"}, status_code=400)
+    custom = bool(raw_input.strip())
 
     def gen():
         q: "queue.Queue" = queue.Queue()
@@ -72,15 +77,23 @@ def run(scenario: str = "A", live: int = 0):
         def worker():
             try:
                 tools.LIVE_ACTIONS = bool(int(live))
-                goal = logistics.scenario_goal(scenario)
+                if custom:
+                    goal = logistics.custom_goal(raw_input, source_type or "email")
+                else:
+                    goal = logistics.scenario_goal(scenario)
                 # Try the real LLM-planned agent, streaming live.
                 result = run_agent(goal, on_step=on_step)
-                # If BOTH providers were rate-limited, the run stops on step 1 with
-                # no resolution -> fall back to a deterministic replay through the
-                # REAL tools so the demo still completes.
                 stopped = (result.get("state_diff") is None
                            and str(result.get("answer", "")).startswith("Agent stopped"))
+                if stopped and custom:
+                    # Can't replay arbitrary input -> surface a clean message.
+                    q.put(("agent_error", {"error": "The LLM planner is rate-limited right now, and "
+                                           "custom input can't use the deterministic replay (that's "
+                                           "scripted for the built-in scenarios). Retry shortly, or "
+                                           "run a built-in scenario."}))
+                    return
                 if stopped:
+                    # Built-in scenario + both providers down -> deterministic replay.
                     q.put(("reset", {}))
                     q.put(("notice", {"mode": "replay",
                                       "text": "Both LLM free tiers are rate-limited right now — "

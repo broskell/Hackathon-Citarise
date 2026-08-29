@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="LODESTAR">
+  <rect width="64" height="64" rx="14" fill="#141210"/>
+  <!-- lodestar: a sharp four-point guiding star -->
+  <path d="M32 6 L36.2 27.8 L58 32 L36.2 36.2 L32 58 L27.8 36.2 L6 32 L27.8 27.8 Z" fill="#E0552B"/>
+  <circle cx="32" cy="32" r="3" fill="#141210"/>
+</svg>

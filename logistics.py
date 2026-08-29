@@ -204,6 +204,17 @@ SCENARIOS = {
 }
 
 
+def custom_goal(raw_input, source_type="email"):
+    """Build the agent goal from a user-supplied raw artifact (custom input).
+    Same instruction as the built-in scenarios, but with the operator's own text."""
+    return (
+        "A logistics exception has been reported.\n\n"
+        f"Raw artifact (source_type={source_type}):\n\n{raw_input}\n\n"
+        "Handle it end-to-end: extract the shipment, diagnose, resolve it or escalate, "
+        "verify the outcome with a before/after check, and notify the customer."
+    )
+
+
 def scenario_goal(key):
     """Build the agent goal string for demo scenario A/B/C, embedding its raw
     artifact. For the photo scenario the artifact is a file path the agent must

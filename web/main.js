@@ -74,6 +74,8 @@ async function loadMeta() {
   setScenario("A");
 }
 
+const EDITS = {};   // per-scenario edited artifact text (survives tab switches)
+
 function setScenario(key) {
   if (running) return;
   ACTIVE = key;
@@ -82,13 +84,28 @@ function setScenario(key) {
   const s = META.scenarios[key];
   $("#srcPill").textContent = SRC_LABEL[s.source_type] || s.source_type;
   const art = $("#artifact");
+
   if (s.artifact_kind === "image") {
     art.innerHTML = `<img src="${s.artifact}" alt="damaged label"/>
       <div class="photo-note">A photograph — no machine-readable fields. The agent must OCR it (extract_from_document) before it can act.</div>`;
   } else {
-    art.textContent = s.artifact;
+    // Editable: the agent runs on whatever is in the box. Edits persist per
+    // scenario across tab switches (EDITS map), so switching away won't lose them.
+    art.innerHTML = `<textarea class="artifact-edit" id="artifactEdit" spellcheck="false"></textarea>
+      <div class="artifact-foot"><span>${icon("edit_note")} Editable — the agent runs on this text.</span>
+      <button class="reset-art" id="resetArt">reset to demo</button></div>`;
+    const ta = $("#artifactEdit");
+    ta.value = (key in EDITS) ? EDITS[key] : s.artifact;
+    const reset = $("#resetArt");
+    const sync = () => {
+      EDITS[key] = ta.value;
+      reset.style.display = (ta.value.trim() !== s.artifact.trim()) ? "inline" : "none";
+    };
+    ta.addEventListener("input", sync);
+    reset.addEventListener("click", () => { ta.value = s.artifact; delete EDITS[key]; sync(); });
+    sync();
   }
-  // reset result/trace
+  // reset result/trace (a fresh scenario starts clean)
   $("#resultPanel").innerHTML = "";
   resetTrace();
 }
@@ -253,7 +270,15 @@ function run() {
   showSkeletons();
 
   const live = $("#liveToggle").checked ? 1 : 0;
-  const es = new EventSource(`/api/run?scenario=${ACTIVE}&live=${live}`);
+  // If the editable artifact was changed, run on the CUSTOM text (live planner
+  // only); if untouched, run the built-in scenario (which can replay-fallback).
+  const s = META.scenarios[ACTIVE];
+  const ta = document.querySelector("#artifactEdit");
+  let extra = "";
+  if (ta && ta.value.trim() && ta.value.trim() !== s.artifact.trim()) {
+    extra = `&raw_input=${encodeURIComponent(ta.value)}&source_type=${encodeURIComponent(s.source_type)}`;
+  }
+  const es = new EventSource(`/api/run?scenario=${ACTIVE}&live=${live}${extra}`);
   es.addEventListener("notice", e => showNotice(JSON.parse(e.data)));
   es.addEventListener("reset", () => { $("#trace").innerHTML = ""; });
   es.addEventListener("step", e => renderStep(JSON.parse(e.data)));

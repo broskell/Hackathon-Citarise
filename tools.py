@@ -24,6 +24,10 @@ load_dotenv()
 # run; the env var lets headless runs opt in too. This is the ONLY gate on real
 # outbound side effects -- every DB mutation is local and always safe.
 LIVE_ACTIONS = os.getenv("LIVE_ACTIONS", "0") == "1"
+# When LIVE, route real sends to a verified recipient you control (the seed
+# customers use fake @example.com / test numbers that providers reject).
+DEMO_EMAIL = os.getenv("DEMO_EMAIL", "").strip()
+DEMO_WHATSAPP = os.getenv("DEMO_WHATSAPP", "").strip()
 
 # --- Human-oversight approval gate --------------------------------------
 # High-consequence FINANCIAL actions at/above this limit require human approval.
@@ -691,12 +695,20 @@ def notify_customer(shipment_id: str, channel: str, message: str) -> dict:
         return {"ok": True, "simulated": True, "channel": channel,
                 "would_send": {"to": to, "message": message}}
 
+    # LIVE: the seed customers use fake @example.com / test numbers that Twilio &
+    # Resend reject. Route real sends to a verified recipient you control via
+    # DEMO_EMAIL / DEMO_WHATSAPP so LIVE ACTIONS is actually demonstrable.
+    dest = (DEMO_WHATSAPP or to) if channel == "whatsapp" else (DEMO_EMAIL or to)
     if channel == "whatsapp":
-        res = send_whatsapp(to=to, body=message)
+        res = send_whatsapp(to=dest, body=message)
     else:
-        res = send_email(to=to, subject=f"Update on your shipment {shipment_id}", body=message)
-    return {"ok": res.get("ok", False), "simulated": False, "channel": channel,
-            "to": to, "provider_result": res}
+        res = send_email(to=dest, subject=f"Update on your shipment {shipment_id}", body=message)
+    out = {"ok": res.get("ok", False), "simulated": False, "channel": channel,
+           "to": dest, "provider_result": res}
+    if not res.get("ok") and dest == to:
+        out["hint"] = ("real send failed for a demo recipient -- set DEMO_EMAIL / "
+                       "DEMO_WHATSAPP to a verified address, or keep LIVE ACTIONS off")
+    return out
 
 
 # ==========================================================================
