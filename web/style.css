@@ -138,7 +138,8 @@ em { font-style:italic; }
 .scen-tab:hover { border-color:var(--line2); background:var(--panel2); }
 .scen-tab.active { border-color:var(--accent); background:var(--panel2); }
 .scen-tab .st-top { display:flex; align-items:center; gap:9px; margin-bottom:7px; }
-.scen-tab .st-key { font-family:var(--serif); font-size:20px; color:var(--accent-ink); line-height:1; }
+.scen-tab .st-key { font-family:var(--sans); font-weight:700; font-size:15px; color:var(--accent-ink); line-height:1;
+  width:26px; height:26px; display:inline-flex; align-items:center; justify-content:center; border-radius:7px; background:var(--accent-soft); }
 .scen-tab .st-mode { font-family:var(--mono); font-size:9.5px; letter-spacing:.14em; text-transform:uppercase;
   color:var(--muted2); border:1px solid var(--line); border-radius:5px; padding:3px 8px; margin-left:auto; }
 .scen-tab .st-label { font-size:13.5px; color:var(--muted); font-weight:500; }
@@ -262,8 +263,8 @@ table.diff td.before, table.diff td.after { width:34%; white-space:normal; word-
 .rh-ship { font-family:var(--mono); font-size:12px; color:var(--accent-ink); background:var(--accent-soft); padding:3px 9px; border-radius:6px; }
 .stat-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(84px,1fr)); gap:1px; background:var(--line);
   border:1px solid var(--line); border-radius:10px; overflow:hidden; }
-.stat { background:var(--panel); padding:11px 13px; }
-.stat .v { font-family:var(--serif); font-size:21px; line-height:1; color:var(--text); word-break:break-word; }
+.stat { background:var(--panel); padding:12px 14px; }
+.stat .v { font-family:var(--sans); font-weight:700; font-size:22px; letter-spacing:-.02em; line-height:1; color:var(--text); word-break:break-word; }
 .stat .k { font-family:var(--mono); font-size:9px; letter-spacing:.07em; text-transform:uppercase; color:var(--muted2); margin-top:6px; }
 
 /* --- detailed, friendly action audit --- */
@@ -307,7 +308,7 @@ table.diff td.before, table.diff td.after { width:34%; white-space:normal; word-
 .ship-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(280px,1fr)); gap:14px; }
 .ship-card { border:1px solid var(--line); border-radius:14px; background:var(--panel); padding:15px 16px; display:flex; flex-direction:column; gap:10px; }
 .sc-top { display:flex; align-items:center; justify-content:space-between; gap:8px; }
-.sc-id { font-family:var(--serif); font-size:19px; color:var(--text); }
+.sc-id { font-family:var(--mono); font-weight:600; font-size:14px; color:var(--text); letter-spacing:.02em; }
 .sc-note { font-size:12.5px; color:var(--muted); line-height:1.5; min-height:34px; }
 .sc-meta { display:flex; flex-wrap:wrap; gap:9px 14px; font-family:var(--mono); font-size:11px; color:var(--muted2); }
 .sc-meta .material-symbols-rounded { font-size:14px; vertical-align:-3px; color:var(--accent-ink); }

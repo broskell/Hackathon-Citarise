@@ -108,8 +108,10 @@ def run(scenario: str = "A", live: int = 0, raw_input: str = "", source_type: st
                     goal = logistics.scenario_goal(scenario)
                 # Try the real LLM-planned agent, streaming live.
                 result = run_agent(goal, on_step=on_step)
-                stopped = (result.get("state_diff") is None
-                           and str(result.get("answer", "")).startswith("Agent stopped"))
+                # Fall back to replay if the run stopped for ANY reason (incl. a
+                # mid-run rate-limit that leaves a partial state) so the demo always
+                # completes cleanly through the real tools.
+                stopped = str(result.get("answer", "")).startswith("Agent stopped")
                 if stopped and custom:
                     # Can't replay arbitrary input -> surface a clean message.
                     q.put(("agent_error", {"error": "The LLM planner is rate-limited right now, and "

@@ -22,15 +22,22 @@ Never raises. Worst case you get provider="none" and an error string.
 
 import json
 import os
+import time
 import traceback
 
 from dotenv import load_dotenv
 
 load_dotenv()
 
-GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
+GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.6-flash")
 # This Groq account exposes gpt-oss / qwen, not Llama-3.3. Override via GROQ_MODEL.
-GROQ_MODEL = os.getenv("GROQ_MODEL", "openai/gpt-oss-120b")
+GROQ_MODEL = os.getenv("GROQ_MODEL", "openai/gpt-oss-20b")
+
+# Free-tier pacing: Gemini flash free tier allows only ~5 requests/minute. A full
+# agent run needs ~7 turns, so we self-throttle Gemini to stay under the limit and
+# complete LIVE instead of 429-ing mid-run. Set GEMINI_RPM=0 to disable.
+GEMINI_RPM = int(os.getenv("GEMINI_RPM", "5"))
+_gemini_calls = []  # unix timestamps of recent Gemini calls
 
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "").strip()
 GROQ_API_KEY = os.getenv("GROQ_API_KEY", "").strip()
@@ -47,6 +54,22 @@ _groq_client = None
 
 def _log(msg):
     print(f"[llm] {msg}", flush=True)
+
+
+def _throttle_gemini():
+    """Evenly pace Gemini calls to >= 60/RPM seconds apart, so a multi-turn run
+    stays under the free-tier per-minute cap and completes LIVE (steady progress
+    instead of a mid-run 429)."""
+    if GEMINI_RPM <= 0:
+        return
+    gap = 60.0 / GEMINI_RPM  # e.g. 12s at 5/min
+    last = _gemini_calls[-1] if _gemini_calls else 0.0
+    wait = gap - (time.time() - last)
+    if wait > 0:
+        _log(f"pacing gemini: +{wait:.0f}s to stay under {GEMINI_RPM}/min")
+        time.sleep(wait)
+    _gemini_calls.append(time.time())
+    del _gemini_calls[:-1]  # keep only the last timestamp
 
 
 # --------------------------------------------------------------------------
@@ -217,6 +240,7 @@ def chat(messages, tools=None):
         try:
             if FORCE_GEMINI_FAIL:
                 raise RuntimeError("FORCE_GEMINI_FAIL is on -- skipping Gemini")
+            _throttle_gemini()  # stay under the free-tier rate limit -> complete live
             out = _call_gemini(messages, tools)
             out["provider"] = "gemini"
             out["error"] = None

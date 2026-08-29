@@ -257,7 +257,8 @@ function renderResult(res) {
   const trace = res.trace || [];
   const audit = (sd && sd.audit_log) || [];
   const code = sd ? (sd.current_state || {}).exception_code : null;
-  const provider = trace.length ? trace[trace.length - 1].provider : "none";
+  // the serving provider = the last step that actually had one (not the "none" final turn)
+  const provider = [...trace].reverse().find(s => s.provider && s.provider !== "none")?.provider || "none";
   const mode = trace.some(s => s.provider === "replay") ? "replay" : "live";
   const retries = audit.reduce((n, a) => n + ((a.retry_log || []).length), 0);
   const dur = res._duration || (RUN_START ? ((Date.now() - RUN_START) / 1000).toFixed(1) + "s" : "—");
