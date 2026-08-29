@@ -12,7 +12,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,300;9..144,400;9..144,500;9..144,600&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@24,400,0,0&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/style.css?v=7" />
+  <link rel="stylesheet" href="/style.css?v=8" />
   <script>
     // Apply saved theme before paint to avoid a flash. Default: light.
     (function () { try { var t = localStorage.getItem("lodestar-theme") || "light";
@@ -138,40 +138,69 @@
         step — then read the verified diff. Nothing here is faked.</p>
     </div>
 
+    <!-- operator sub-navigation -->
+    <div class="op-nav" id="opNav" data-reveal>
+      <button class="op-tab active" data-view="console"><span class="material-symbols-rounded">bolt</span> Console</button>
+      <button class="op-tab" data-view="shipments"><span class="material-symbols-rounded">inventory_2</span> Shipments</button>
+      <button class="op-tab" data-view="history"><span class="material-symbols-rounded">history</span> History <span class="op-count" id="histCount"></span></button>
+      <button class="op-tab" data-view="insights"><span class="material-symbols-rounded">monitoring</span> Insights</button>
+    </div>
+
     <div class="console-shell" data-reveal>
-      <!-- scenario tabs -->
-      <div class="scen-tabs" id="scenTabs"></div>
-
-      <div class="console-grid">
-        <!-- left: input + controls -->
-        <div class="col-input">
-          <div class="panel">
-            <div class="panel-head"><span class="material-symbols-rounded">description</span> Raw exception artifact <span class="src-pill" id="srcPill"></span></div>
-            <div class="artifact" id="artifact"></div>
+      <!-- VIEW: Console -->
+      <div class="view" id="view-console">
+        <div class="scen-tabs" id="scenTabs"></div>
+        <div class="console-grid">
+          <div class="col-input">
+            <div class="panel">
+              <div class="panel-head"><span class="material-symbols-rounded">description</span> Raw exception artifact <span class="src-pill" id="srcPill"></span></div>
+              <div class="artifact" id="artifact"></div>
+            </div>
+            <div class="run-row">
+              <label class="switch">
+                <input type="checkbox" id="liveToggle" />
+                <span class="track"></span>
+                <span class="switch-label">Live actions <em id="liveHint">simulated</em></span>
+              </label>
+              <button class="btn btn-solid" id="runBtn">Run agent <span class="material-symbols-rounded">bolt</span></button>
+            </div>
+            <div id="resultPanel"></div>
           </div>
-          <div class="run-row">
-            <label class="switch">
-              <input type="checkbox" id="liveToggle" />
-              <span class="track"></span>
-              <span class="switch-label">Live actions <em id="liveHint">simulated</em></span>
-            </label>
-            <button class="btn btn-solid" id="runBtn">Run agent <span class="material-symbols-rounded">bolt</span></button>
-          </div>
-
-          <!-- result -->
-          <div id="resultPanel"></div>
-        </div>
-
-        <!-- right: live trace -->
-        <div class="col-trace">
-          <div class="panel-head"><span class="material-symbols-rounded">bolt</span> Agent trace</div>
-          <div class="trace" id="trace">
-            <div class="trace-empty" id="traceEmpty">
-              <div class="mk"><span class="material-symbols-rounded">conveyor_belt</span></div>
-              <b>Idle</b><span>Run a scenario to stream the agent's steps here.</span>
+          <div class="col-trace">
+            <div class="panel-head"><span class="material-symbols-rounded">bolt</span> Agent trace
+              <button class="mini-btn" id="exportBtn" title="Export last run" hidden><span class="material-symbols-rounded">download</span></button></div>
+            <div class="trace" id="trace">
+              <div class="trace-empty" id="traceEmpty">
+                <div class="mk"><span class="material-symbols-rounded">conveyor_belt</span></div>
+                <b>Idle</b><span>Run a scenario to stream the agent's steps here.</span>
+              </div>
             </div>
           </div>
         </div>
+      </div>
+
+      <!-- VIEW: Shipments -->
+      <div class="view" id="view-shipments" hidden>
+        <div class="view-bar">
+          <div class="search"><span class="material-symbols-rounded">search</span>
+            <input id="shipSearch" placeholder="Search shipments, carriers, cities…" /></div>
+          <div class="chips-filter" id="shipFilter"></div>
+        </div>
+        <div class="ship-grid" id="shipGrid"></div>
+      </div>
+
+      <!-- VIEW: History -->
+      <div class="view" id="view-history" hidden>
+        <div class="view-bar">
+          <div class="view-bar-title"><span class="material-symbols-rounded">history</span> Run history <span class="op-count" id="histCount2"></span></div>
+          <button class="mini-btn danger" id="clearHist"><span class="material-symbols-rounded">delete_sweep</span> Clear all</button>
+        </div>
+        <div class="hist-list" id="histList"></div>
+      </div>
+
+      <!-- VIEW: Insights -->
+      <div class="view" id="view-insights" hidden>
+        <div id="insights"></div>
       </div>
     </div>
   </section>
@@ -199,6 +228,6 @@
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/ScrollTrigger.min.js"></script>
-  <script src="/main.js?v=7"></script>
+  <script src="/main.js?v=8"></script>
 </body>
 </html>

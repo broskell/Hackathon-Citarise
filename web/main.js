@@ -260,7 +260,7 @@ function renderResult(res) {
   const provider = trace.length ? trace[trace.length - 1].provider : "none";
   const mode = trace.some(s => s.provider === "replay") ? "replay" : "live";
   const retries = audit.reduce((n, a) => n + ((a.retry_log || []).length), 0);
-  const dur = RUN_START ? ((Date.now() - RUN_START) / 1000).toFixed(1) + "s" : "—";
+  const dur = res._duration || (RUN_START ? ((Date.now() - RUN_START) / 1000).toFixed(1) + "s" : "—");
   p.innerHTML = "";
 
   // 1) DASHBOARD header: status + shipment + metric tiles
@@ -332,7 +332,14 @@ function run() {
   es.addEventListener("notice", e => showNotice(JSON.parse(e.data)));
   es.addEventListener("reset", () => { $("#trace").innerHTML = ""; });
   es.addEventListener("step", e => renderStep(JSON.parse(e.data)));
-  es.addEventListener("result", e => renderResult(JSON.parse(e.data)));
+  es.addEventListener("result", e => {
+    const r = JSON.parse(e.data);
+    r._duration = RUN_START ? ((Date.now() - RUN_START) / 1000).toFixed(1) + "s" : "—";
+    r._scenario = ACTIVE;
+    LAST_RUN = r;
+    renderResult(r);
+    if (r.state_diff) { saveRunToHistory(r); $("#exportBtn").hidden = false; }
+  });
   es.addEventListener("agent_error", e => {
     $("#resultPanel").innerHTML = `<div class="result-card"><div class="rc-hd">${icon("error")} Error</div>
       <div class="answer-md">${esc(JSON.parse(e.data).error)}</div></div>`;
@@ -357,11 +364,198 @@ $("#themeToggle").addEventListener("click", () => {
   applyTheme(theme);
 });
 
+/* ==========================================================================
+   OPERATOR PLATFORM — Shipments · History · Insights (+ notes, export, pin)
+   ========================================================================== */
+let SHIPMENTS = null, SHIP_FILTER = "all", LAST_RUN = null;
+const HIST_KEY = "lodestar-history", NOTES_KEY = "lodestar-notes";
+const jget = (k, d) => { try { return JSON.parse(localStorage.getItem(k)) ?? d; } catch (e) { return d; } };
+const jset = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} };
+const loadHist = () => jget(HIST_KEY, []);
+const saveHist = (h) => { jset(HIST_KEY, h.slice(0, 50)); updateHistCount(); };
+const codeOf = (r) => ((r.res.state_diff || {}).current_state || {}).exception_code;
+const outcomeOf = (r) => codeOf(r) === "ESCALATED" ? "escalated"
+  : ((r.res.state_diff || {}).resolved ? "resolved" : "open");
+
+function updateHistCount() {
+  const n = loadHist().length;
+  ["#histCount", "#histCount2"].forEach(s => { const e = $(s); if (e) e.textContent = n ? n : ""; });
+}
+
+function showView(v) {
+  document.querySelectorAll(".op-tab").forEach(t => t.classList.toggle("active", t.dataset.view === v));
+  document.querySelectorAll(".view").forEach(x => x.hidden = x.id !== "view-" + v);
+  if (v === "shipments") renderShipments();
+  if (v === "history") renderHistory();
+  if (v === "insights") renderInsights();
+}
+
+/* ---- Shipments explorer ---- */
+function statusBadgeSmall(s) {
+  if (s.exception_code === "ESCALATED") return `<span class="chip escal-chip">${icon("support_agent")}escalated</span>`;
+  if (s.exception_code) return `<span class="chip fail">${icon("warning")}${esc(s.exception_code)}</span>`;
+  return `<span class="chip ok">${icon("check")}${esc(s.status)}</span>`;
+}
+async function renderShipments() {
+  const grid = $("#shipGrid");
+  if (!SHIPMENTS) {
+    grid.innerHTML = `<div class="loader"><span class="dot"></span>Loading shipments…</div>`;
+    try { SHIPMENTS = (await (await fetch("/api/shipments")).json()).shipments; }
+    catch (e) { grid.innerHTML = "Failed to load."; return; }
+    buildShipFilter();
+  }
+  const q = ($("#shipSearch").value || "").toLowerCase();
+  const notes = jget(NOTES_KEY, {});
+  const items = SHIPMENTS.filter(s => {
+    const hay = `${s.id} ${s.carrier} ${s.destination} ${s.customer} ${s.exception_code || ""}`.toLowerCase();
+    const codeGroup = s.exception_code || "clear";
+    return hay.includes(q) && (SHIP_FILTER === "all" || codeGroup === SHIP_FILTER);
+  });
+  grid.innerHTML = items.map(s => `
+    <div class="ship-card" data-id="${s.id}">
+      <div class="sc-top"><span class="sc-id">${esc(s.id)}</span>${statusBadgeSmall(s)}</div>
+      <div class="sc-note">${esc(s.exception_note || "No active exception")}</div>
+      <div class="sc-meta">
+        <span>${icon("local_shipping")} ${esc(s.carrier)}</span>
+        <span>${icon("place")} ${esc((s.destination || "").split(",")[0])}</span>
+        <span>${icon("payments")} $${esc(s.order_value_usd)}</span>
+        <span>${icon("person")} ${esc(s.customer)}</span>
+      </div>
+      <textarea class="sc-noteinput" data-id="${s.id}" placeholder="Add an operator note…">${esc(notes[s.id] || "")}</textarea>
+      <div class="sc-actions">
+        ${s.scenario ? `<button class="btn btn-solid sc-run" data-scenario="${s.scenario}">Run agent ${icon("bolt")}</button>` : ""}
+      </div>
+    </div>`).join("") || `<div class="empty-mini">No shipments match.</div>`;
+
+  grid.querySelectorAll(".sc-run").forEach(b => b.addEventListener("click", () => {
+    showView("console"); setScenario(b.dataset.scenario);
+    $("#view-console").scrollIntoView({ behavior: "smooth" });
+    setTimeout(() => run(), 400);
+  }));
+  grid.querySelectorAll(".sc-noteinput").forEach(t => t.addEventListener("change", () => {
+    const n = jget(NOTES_KEY, {}); n[t.dataset.id] = t.value; jset(NOTES_KEY, n);
+  }));
+}
+function buildShipFilter() {
+  const codes = ["all", ...new Set(SHIPMENTS.map(s => s.exception_code || "clear"))];
+  $("#shipFilter").innerHTML = codes.map(c =>
+    `<button class="fchip${c === SHIP_FILTER ? " active" : ""}" data-c="${c}">${c === "all" ? "All" : esc(c)}</button>`).join("");
+  $("#shipFilter").querySelectorAll(".fchip").forEach(b => b.addEventListener("click", () => {
+    SHIP_FILTER = b.dataset.c; buildShipFilter(); renderShipments();
+  }));
+}
+
+/* ---- Run history ---- */
+function saveRunToHistory(r) {
+  const trace = (r.trace || []).map(s => ({ tool: s.tool, provider: s.provider }));
+  const h = loadHist();
+  h.unshift({
+    id: "run-" + (r.state_diff.shipment_id) + "-" + Date.now(), ts: Date.now(), pinned: false,
+    scenario: r._scenario,
+    res: { answer: r.answer, iterations: r.iterations, trace, state_diff: r.state_diff, _duration: r._duration },
+  });
+  saveHist(h);
+}
+function renderHistory() {
+  const list = $("#histList");
+  let h = loadHist();
+  if (!h.length) { list.innerHTML = `<div class="empty-mini">${icon("history")} No runs yet — run the agent and they'll appear here.</div>`; return; }
+  h = [...h].sort((a, b) => (b.pinned - a.pinned) || (b.ts - a.ts));
+  list.innerHTML = h.map(r => {
+    const sd = r.res.state_diff || {}; const out = outcomeOf(r);
+    const badge = out === "escalated" ? `<span class="chip escal-chip">${icon("support_agent")}escalated</span>`
+      : out === "resolved" ? `<span class="chip ok">${icon("verified")}resolved</span>`
+        : `<span class="chip fail">${icon("pending")}open</span>`;
+    const t = new Date(r.ts).toLocaleString();
+    const tools = (r.res.trace || []).filter(s => s.tool).length;
+    return `<div class="hist-row" data-id="${r.id}">
+      <div class="hr-main">
+        <div class="hr-top">${badge}<span class="rh-ship">${esc(sd.shipment_id || "?")}</span>
+          <span class="hr-scn">scenario ${esc(r.scenario || "custom")}</span></div>
+        <div class="hr-sub">${t} · ${tools} tool calls · ${esc(r.res._duration || "")}</div>
+      </div>
+      <div class="hr-actions">
+        <button class="icon-btn open" title="Open">${icon("visibility")}</button>
+        <button class="icon-btn pin${r.pinned ? " on" : ""}" title="Pin">${icon(r.pinned ? "star" : "star_outline")}</button>
+        <button class="icon-btn exp" title="Export">${icon("download")}</button>
+        <button class="icon-btn del danger" title="Delete">${icon("delete")}</button>
+      </div></div>`;
+  }).join("");
+  const byId = (id) => loadHist().find(x => x.id === id);
+  list.querySelectorAll(".hist-row").forEach(row => {
+    const id = row.dataset.id;
+    row.querySelector(".open").addEventListener("click", () => {
+      const r = byId(id); if (!r) return; showView("console"); renderResult(r.res);
+      $("#exportBtn").hidden = false; LAST_RUN = r.res; $("#view-console").scrollIntoView({ behavior: "smooth" });
+    });
+    row.querySelector(".pin").addEventListener("click", () => {
+      const h2 = loadHist(); const it = h2.find(x => x.id === id); if (it) it.pinned = !it.pinned; saveHist(h2); renderHistory();
+    });
+    row.querySelector(".del").addEventListener("click", () => { saveHist(loadHist().filter(x => x.id !== id)); renderHistory(); });
+    row.querySelector(".exp").addEventListener("click", () => exportRun(byId(id).res));
+  });
+}
+function exportRun(res) {
+  const sd = res.state_diff || {};
+  const report = {
+    product: "LODESTAR", shipment: sd.shipment_id, resolved: sd.resolved,
+    status: (sd.current_state || {}).exception_code || "RESOLVED",
+    duration: res._duration, iterations: res.iterations,
+    summary: res.answer, diff: sd.diff, audit: sd.audit_log,
+    exported_at: new Date().toISOString(),
+  };
+  const blob = new Blob([JSON.stringify(report, null, 2)], { type: "application/json" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob); a.download = `lodestar-${sd.shipment_id || "run"}.json`;
+  a.click(); URL.revokeObjectURL(a.href);
+}
+
+/* ---- Insights (analytics) ---- */
+function bar(label, val, max, cls) {
+  const pct = max ? Math.round((val / max) * 100) : 0;
+  return `<div class="bar-row"><div class="bar-lab">${esc(label)}</div>
+    <div class="bar-track"><div class="bar-fill ${cls || ""}" style="width:${pct}%"></div></div>
+    <div class="bar-val">${val}</div></div>`;
+}
+function renderInsights() {
+  const box = $("#insights"); const h = loadHist();
+  if (!h.length) { box.innerHTML = `<div class="empty-mini">${icon("monitoring")} No data yet — run a few scenarios to populate insights.</div>`; return; }
+  const runs = h.length;
+  const resolved = h.filter(r => outcomeOf(r) === "resolved").length;
+  const escalated = h.filter(r => outcomeOf(r) === "escalated").length;
+  const avgTools = (h.reduce((n, r) => n + (r.res.trace || []).filter(s => s.tool).length, 0) / runs).toFixed(1);
+  const avgDur = (h.reduce((n, r) => n + parseFloat(r.res._duration || 0), 0) / runs).toFixed(1) + "s";
+  const stats = [[runs, "total runs"], [Math.round(resolved / runs * 100) + "%", "resolved"],
+    [Math.round(escalated / runs * 100) + "%", "escalated"], [avgTools, "avg tool calls"], [avgDur, "avg duration"]];
+  // tool usage frequency
+  const freq = {};
+  h.forEach(r => (r.res.trace || []).forEach(s => { if (s.tool) freq[s.tool] = (freq[s.tool] || 0) + 1; }));
+  const top = Object.entries(freq).sort((a, b) => b[1] - a[1]);
+  const maxF = top.length ? top[0][1] : 1;
+  // outcomes
+  const oc = { resolved, escalated, open: runs - resolved - escalated };
+  const maxO = Math.max(1, ...Object.values(oc));
+  box.innerHTML = `
+    <div class="report-head"><div class="rh-top">${icon("monitoring")} <b>Operations insights</b></div>
+      <div class="stat-grid">${stats.map(([v, k]) => `<div class="stat"><div class="v">${esc(v)}</div><div class="k">${k}</div></div>`).join("")}</div></div>
+    <div class="ins-grid">
+      <div class="result-card"><div class="rc-hd">${icon("bar_chart")} Tool usage</div>
+        ${top.map(([t, c]) => bar(t, c, maxF, "")).join("") || "<p>—</p>"}</div>
+      <div class="result-card"><div class="rc-hd">${icon("donut_small")} Outcomes</div>
+        ${bar("resolved", oc.resolved, maxO, "g")}${bar("escalated", oc.escalated, maxO, "a")}${bar("open", oc.open, maxO, "r")}</div>
+    </div>`;
+}
+
 /* ---------------- boot ---------------- */
 document.documentElement.classList.remove("no-js");
 $("#liveToggle").addEventListener("change", (e) =>
   $("#liveHint").textContent = e.target.checked ? "REAL sends" : "simulated");
 $("#runBtn").addEventListener("click", run);
+$("#exportBtn").addEventListener("click", () => LAST_RUN && exportRun(LAST_RUN));
+document.querySelectorAll(".op-tab").forEach(t => t.addEventListener("click", () => showView(t.dataset.view)));
+$("#shipSearch") && $("#shipSearch").addEventListener("input", renderShipments);
+$("#clearHist") && $("#clearHist").addEventListener("click", () => { saveHist([]); renderHistory(); });
+updateHistCount();
 loadMeta();
 initReveals();
 initAnim();

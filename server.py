@@ -53,6 +53,30 @@ def meta():
             "tools": [t["name"] for t in tools.TOOLS]}
 
 
+@app.get("/api/shipments")
+def shipments():
+    """The full shipment directory (fresh seed) for the Shipments explorer."""
+    logistics.reset_db()
+    out = []
+    for sid, sh in logistics.DB["shipments"].items():
+        order = logistics.get_order_raw(sh["order_id"]) or {}
+        cust = logistics.get_customer_for_order(sh["order_id"]) or {}
+        out.append({
+            "id": sid, "status": sh["status"], "exception_code": sh.get("exception_code"),
+            "exception_note": sh.get("exception_note"), "carrier": sh["carrier"],
+            "current_hub": sh["current_hub"], "destination": sh["destination"],
+            "region": sh["region"], "eta": sh["eta"], "attempts": sh["attempts"],
+            "order_id": sh["order_id"], "order_value_usd": order.get("value_usd"),
+            "priority": order.get("priority"),
+            "customer": cust.get("name"), "channel": cust.get("preferred_channel"),
+        })
+    # A demo scenario key per shipment (so "Run agent" knows which artifact to use).
+    ship_to_scenario = {sc["shipment"]: k for k, sc in logistics.SCENARIOS.items()}
+    for s in out:
+        s["scenario"] = ship_to_scenario.get(s["id"])
+    return {"shipments": out}
+
+
 def _sse(event: str, data) -> str:
     return f"event: {event}\ndata: {json.dumps(data, default=str)}\n\n"
 
