@@ -12,6 +12,8 @@ services:
         sync: false          # set in the Render dashboard (secret)
       - key: GROQ_API_KEY
         sync: false          # set in the Render dashboard (secret)
+      - key: GROQ_MODEL
+        value: openai/gpt-oss-20b   # per-model daily quota; swap if this one caps out
       - key: LIVE_ACTIONS
         value: "0"           # keep real customer sends OFF by default
       - key: APPROVAL_THRESHOLD_USD
