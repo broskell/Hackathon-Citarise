@@ -212,6 +212,25 @@ def _extract_json(text: str):
     return None
 
 
+def _canonical_sid(sid):
+    """Normalize a recovered shipment ref to canonical SHP-#### form.
+
+    The LLM extractor often returns the id exactly as written in messy input
+    ('shp2002', '3003', 'SHP 1001'); canonicalizing here means the planner's very
+    next get_shipment call lands on a real record instead of a miss. Bare digit
+    runs are coerced to SHP-#### (this domain's only shipment prefix)."""
+    if not sid:
+        return sid
+    s = str(sid).upper().replace(" ", "").replace("_", "")
+    m = re.search(r"SHP-?(\d+)", s)
+    if m:
+        return f"SHP-{m.group(1)}"
+    m = re.fullmatch(r"\d{3,4}", s)
+    if m:
+        return f"SHP-{s}"
+    return sid
+
+
 def _regex_parse(raw_input: str) -> dict:
     """Deterministic safety-net extractor: shipment id + exception type."""
     sid = None
@@ -271,6 +290,7 @@ def parse_exception(raw_input: str, source_type: str = "email") -> dict:
         out = chat([{"role": "user", "content": prompt}])
         parsed = _extract_json(out.get("text", ""))
         if parsed and parsed.get("shipment_id"):
+            parsed["shipment_id"] = _canonical_sid(parsed.get("shipment_id"))
             parsed.setdefault("extracted_fields", {})
             parsed.setdefault("confidence", 0.8)
             parsed["method"] = "llm"
@@ -283,6 +303,61 @@ def parse_exception(raw_input: str, source_type: str = "email") -> dict:
     if not fallback["ok"]:
         fallback["error"] = "could not extract a shipment id"
     return fallback
+
+
+# ==========================================================================
+# assess_ambiguity -- confidence-gated clarifying-question pre-flight
+# --------------------------------------------------------------------------
+# Before the agent acts on an OPERATOR-supplied artifact, judge whether a key
+# field (shipment id / exception type / destination) is genuinely ambiguous. If
+# so, return a clarifying QUESTION + candidate options so the run can PAUSE and
+# ask instead of guessing. Read-only, and fails OPEN (any error -> proceed) so a
+# run is never wrongly blocked. Built-in scenarios skip this entirely.
+# ==========================================================================
+def assess_ambiguity(raw_input: str, source_type: str = "email") -> dict:
+    """Emit a confidence signal on the key fields and, when one is genuinely
+    ambiguous (a city with no state that matches multiple real places, two
+    plausible exception types, garbled/unreadable ids), return a clarifying
+    question with concrete options. Mutates nothing."""
+    from llm import chat
+    prompt = (
+        "You are the intake check for a logistics exception agent. Read the raw "
+        "artifact and decide whether a HUMAN must clarify ONE key field BEFORE the "
+        "agent acts. Key fields: shipment_id, exception_type "
+        "(WEATHER_HOLD | BAD_ADDRESS | CARRIER_OUTAGE), destination.\n\n"
+        "Set needs_clarification=true ONLY when a field is genuinely ambiguous, e.g.:\n"
+        "- a destination city with no state/country that matches multiple real places "
+        "(e.g. 'Portland' -> OR or ME; 'Springfield');\n"
+        "- the message genuinely supports TWO different exception_type readings;\n"
+        "- the shipment id is unreadable/garbled.\n"
+        "If everything needed to act is clear enough, set needs_clarification=false. "
+        "Do NOT invent ambiguity; most artifacts are clear.\n\n"
+        "When you DO flag it, write one short operator-facing question and 2-3 options, "
+        "each option's `value` being the concrete value the agent should then use.\n\n"
+        "Return ONLY JSON with keys: shipment_id, exception_type, destination, "
+        "confidence (0.0-1.0), needs_clarification (bool), field (the ambiguous field "
+        "or null), question (string), options (array of {label, value}), reason (one line).\n\n"
+        f"SOURCE_TYPE: {source_type}\n---\n{raw_input}\n---"
+    )
+    try:
+        out = chat([{"role": "user", "content": prompt}])
+        parsed = _extract_json(out.get("text", "")) or {}
+        parsed["ok"] = True
+        parsed["needs_clarification"] = bool(parsed.get("needs_clarification"))
+        opts = parsed.get("options") or []
+        parsed["options"] = [
+            {"label": str(o.get("label", o.get("value", "")))[:70],
+             "value": str(o.get("value", o.get("label", "")))[:140]}
+            for o in opts if isinstance(o, dict) and (o.get("label") or o.get("value"))
+        ][:4]
+        # Can't ask a useful question -> don't block; let the agent proceed.
+        if parsed["needs_clarification"] and (not parsed["options"] or not parsed.get("question")):
+            parsed["needs_clarification"] = False
+        if parsed.get("shipment_id"):
+            parsed["shipment_id"] = _canonical_sid(parsed["shipment_id"])
+        return parsed
+    except Exception as e:
+        return {"ok": False, "needs_clarification": False, "error": f"{type(e).__name__}: {e}"}
 
 
 # ==========================================================================

@@ -77,6 +77,17 @@ def shipments():
     return {"shipments": out}
 
 
+@app.get("/api/clarify")
+def clarify(raw_input: str = "", source_type: str = "email"):
+    """Confidence-gated pre-flight for a CUSTOM artifact: returns a clarifying
+    question + options when a key field is genuinely ambiguous, else clear. Runs
+    one read-only LLM call and mutates nothing. Only the console's custom-input
+    path calls this; built-in scenarios never do."""
+    if not raw_input.strip():
+        return {"needs_clarification": False}
+    return tools.assess_ambiguity(raw_input, source_type)
+
+
 def _sse(event: str, data) -> str:
     return f"event: {event}\ndata: {json.dumps(data, default=str)}\n\n"
 
@@ -104,6 +115,14 @@ def run(scenario: str = "A", live: int = 0, raw_input: str = "", source_type: st
                 tools.LIVE_ACTIONS = bool(int(live))
                 if custom:
                     goal = logistics.custom_goal(raw_input, source_type or "email")
+                    # Custom artifacts run LIVE only — the deterministic replay is
+                    # scripted for the built-in scenarios, so there is no canned path
+                    # to fall into. Label that up front.
+                    q.put(("notice", {"mode": "live",
+                                      "text": "Novel input — planning LIVE on the full toolset, no "
+                                              "scripted path. Deterministic replay is disabled for "
+                                              "custom artifacts; a rate-limit surfaces as a notice, "
+                                              "never a fabricated result."}))
                 else:
                     goal = logistics.scenario_goal(scenario)
                 # Try the real LLM-planned agent, streaming live.

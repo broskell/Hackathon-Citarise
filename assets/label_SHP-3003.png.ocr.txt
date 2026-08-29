@@ -1,15 +1,44 @@
-Here's the extracted text from the image:
+Here is the extracted text and structured information from the shipping label:
 
-**Primary Label Information:**
-*   PRIORITY SHIPPING LABEL
-*   TRACKING #: SHP-3003
-*   ORDER: ORD-3003
-*   CARRIER: SwiftCargo Freight
-*   TO: 500 S Grand Ave, Los Angeles, CA 90071
+---
 
-**Added Note (in red):**
-*   SwiftCargo system DOWN -
-*   cannot scan / cannot deliver
-*   returning to LAX hub - drv #4471
+### **1. Key Information (Structured Data)**
 
-**Tracking Number:** SHP-3003
+* **Document Type:** Priority Shipping Label
+* **Tracking Number:** `SHP-3003`
+* **Order Number:** `ORD-3003`
+* **Carrier:** SwiftCargo Freight
+* **Destination Address (TO):** 
+  * **Street:** 500 S Grand Ave
+  * **City:** Los Angeles
+  * **State:** CA
+  * **ZIP Code:** 90071
+
+---
+
+### **2. Overlaid Status / Exception Note (Red Text)**
+
+* **Status Message:** 
+  > *"SwiftCargo system DOWN - cannot scan / cannot deliver. returning to LAX hub - drv #4471"*
+
+* **Status Summary:**
+  * **Issue:** Carrier system outage ("system DOWN").
+  * **Action Taken:** Delivery failed; package returned to LAX hub.
+  * **Driver ID:** `#4471`
+
+---
+
+### **3. Complete Raw Text Transcription**
+
+```text
+PRIORITY SHIPPING LABEL
+
+TRACKING #: SHP-3003
+ORDER: ORD-3003
+CARRIER: SwiftCargo Freight
+TO: 500 S Grand Ave, Los Angeles, CA 90071
+
+SwiftCargo system DOWN - 
+cannot scan / cannot deliver. 
+returning to LAX hub - drv #4471
+```

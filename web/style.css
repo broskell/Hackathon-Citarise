@@ -387,3 +387,66 @@ html.no-js [data-reveal], html.no-js .pipe-step { opacity:1 !important; transfor
 .caret { display:inline-block; width:7px; height:1.02em; background:var(--accent-ink); vertical-align:-2px;
   margin-left:1px; border-radius:1px; animation:caret 1s steps(1) infinite; }
 @keyframes caret { 50%{opacity:0} }
+
+/* ---- Off-script novel inputs (Phase 1) ---- */
+.novel-strip { margin:-4px 0 20px; padding:13px 15px; border:1px dashed var(--line2); border-radius:10px; background:var(--panel); }
+.novel-lab { display:flex; align-items:flex-start; gap:8px; font-family:var(--mono); font-size:11px; line-height:1.55;
+  letter-spacing:.01em; color:var(--muted); margin-bottom:12px; }
+.novel-lab .material-symbols-rounded { font-size:16px; color:var(--accent-ink); flex:none; margin-top:1px; }
+.novel-chips { display:flex; gap:10px; flex-wrap:wrap; }
+.novel-chip { flex:1; min-width:180px; text-align:left; border:1px solid var(--line); border-radius:9px;
+  background:var(--panel2); padding:11px 13px; cursor:pointer; transition:.18s; display:flex; flex-direction:column; gap:5px; }
+.novel-chip:hover { border-color:var(--accent); background:var(--panel3); transform:translateY(-1px); }
+.novel-chip.active { border-color:var(--accent); background:var(--accent-soft); }
+.novel-chip .nc-tag { display:inline-flex; align-items:center; gap:4px; font-family:var(--mono); font-size:9.5px;
+  letter-spacing:.13em; text-transform:uppercase; color:var(--accent-ink); }
+.novel-chip .nc-tag .material-symbols-rounded { font-size:12px; }
+.novel-chip .nc-label { font-size:13px; color:var(--text); font-weight:500; }
+
+/* ---- Plain-language trace + prove-it (Phase 3 / Harbor-style outputs) ---- */
+.step-plain { font-weight:600; font-size:13.5px; color:var(--text); flex:1 1 auto; }
+.step-tick { display:inline-flex; align-items:center; color:var(--green); }
+.step-tick .material-symbols-rounded { font-size:16px; }
+.step-status { display:inline-flex; align-items:center; gap:4px; font-family:var(--mono); font-size:10.5px;
+  letter-spacing:.01em; padding:2px 8px; border-radius:20px; border:1px solid var(--line2); }
+.step-status .material-symbols-rounded { font-size:13px; }
+.step-status.red { color:var(--red); border-color:rgba(240,86,106,.38); background:rgba(240,86,106,.06); }
+.step-status.amber { color:var(--amber); border-color:rgba(225,162,60,.38); background:rgba(225,162,60,.06); }
+.step-status.muted { color:var(--muted2); }
+.step-why { font-size:13px; line-height:1.55; color:var(--muted); margin-bottom:2px; }
+.step.done { border-style:dashed; }
+.io summary { display:inline-flex; align-items:center; gap:5px; user-select:none; }
+.io summary .material-symbols-rounded { font-size:13px; }
+
+.result-card.prove { border-color:rgba(62,213,152,.28); background:linear-gradient(180deg, rgba(62,213,152,.05), transparent 60%); }
+.prove-list { list-style:none; margin:10px 0 0; padding:0; display:flex; flex-direction:column; gap:9px; }
+.prove-list li { position:relative; padding-left:24px; font-size:13.5px; line-height:1.5; color:var(--text); }
+.prove-list li::before { content:"check"; font-family:"Material Symbols Rounded"; position:absolute; left:0; top:0;
+  font-size:16px; color:var(--green); }
+
+/* ---- Confidence-gated clarifying question (Phase 2) ---- */
+.clarify-card { border:1px solid var(--accent); border-radius:11px; background:var(--accent-soft);
+  padding:16px 17px; }
+.clarify-card.checking { border-style:dashed; border-color:var(--line2); background:var(--panel2); }
+.cc-hd { display:flex; align-items:center; gap:8px; font-weight:600; font-size:14px; color:var(--text); }
+.cc-hd .material-symbols-rounded { font-size:19px; color:var(--accent-ink); }
+.cc-sub { font-size:12.5px; color:var(--muted); margin-top:6px; }
+.cc-q { font-size:15px; font-weight:600; color:var(--text); margin:12px 0 6px; line-height:1.4; }
+.cc-reason { display:flex; align-items:center; gap:6px; font-family:var(--mono); font-size:11px; color:var(--muted);
+  margin-bottom:14px; }
+.cc-reason .material-symbols-rounded { font-size:14px; }
+.clarify-opts { display:flex; flex-direction:column; gap:9px; }
+.clarify-opt { text-align:left; border:1px solid var(--line2); border-radius:9px; background:var(--panel);
+  padding:11px 13px; cursor:pointer; transition:.16s; display:flex; flex-direction:column; gap:3px; }
+.clarify-opt:hover { border-color:var(--accent); background:var(--panel2); transform:translateX(2px); }
+.clarify-opt .co-val { font-family:var(--mono); font-size:11px; color:var(--muted); }
+.cc-or { text-align:center; font-family:var(--mono); font-size:10.5px; letter-spacing:.14em; text-transform:uppercase;
+  color:var(--muted2); margin:13px 0; }
+.clarify-free { display:flex; gap:8px; }
+.clarify-free input { flex:1; min-width:0; background:var(--panel); border:1px solid var(--line2); border-radius:8px;
+  padding:10px 12px; color:var(--text); font-family:var(--sans); font-size:13px; }
+.clarify-free input:focus { outline:none; border-color:var(--accent); }
+.clarify-free .btn { white-space:nowrap; padding:9px 15px; }
+.cc-foot { display:flex; align-items:center; gap:6px; font-size:11.5px; color:var(--muted); margin-top:14px;
+  padding-top:12px; border-top:1px solid var(--line); }
+.cc-foot .material-symbols-rounded { font-size:14px; color:var(--green); }

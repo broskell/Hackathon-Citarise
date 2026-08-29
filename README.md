@@ -71,6 +71,16 @@ delivers a **verified** resolution. Three properties make it trustworthy:
 | 02 | **Execute with resilience** | Idempotent state changes, exponential-backoff retry, and a **code-level transient (retry) vs permanent (escalate)** distinction — not a hopeful prompt. |
 | 03 | **Prove the fix** | After any change it **re-reads authoritative state** and returns a field-level before/after **diff** with a verified `RESOLVED` — or a deliberate escalation to a human. |
 
+### What makes it stand out
+
+Three things on top of the core loop — the reasons this reads as an agent, not a script:
+
+| | Capability | What it means |
+|---|-----------|---------------|
+| 🆕 | **Live novel input** | Paste *any* artifact it has never seen — a tracking id buried mid-sentence, a misspelled webhook, a bare number. The agent extracts it with the LLM (a regex can't) and plans dynamically from the **full** tool set. Custom runs are **live-only** — never a canned path. |
+| 🧠 | **Confidence-gated clarifying question** | The agent reasons about its **own uncertainty**. When a key field is genuinely ambiguous (e.g. *"Portland"* with no state), it **pauses and asks** with candidate options — and **mutates nothing** until you answer, then resumes to a verified fix. |
+| 💬 | **Reasoning you can read** | Every step is in plain operator language ("Looked up the shipment") with a one-line **why**, raw JSON tucked behind *Details*, and a **"Done — and you can prove it"** list built from the real audit log. |
+
 ---
 
 ## Screenshots
@@ -108,6 +118,14 @@ fixed sequence resolves all three.
 | **A** | Carrier **email** (unstructured) | `WEATHER_HOLD` | parse → get_shipment → list_carriers → **reroute** → verify → notify | email extraction + reroute + verified diff |
 | **B** | **JSON webhook** (messy fields) | `BAD_ADDRESS` (2 fails) | parse → get_shipment → **validate_address** (real geocode) → update_address → **reschedule** (transient→retry) → issue_credit → verify → notify | real external call + retry recovery + multi-action fix |
 | **C** | **Photo** of a damaged label (vision) | `CARRIER_OUTAGE` (high-value) | extract_from_document → parse → get_shipment → list_carriers → **reassign** (permanent fail) → **escalate** → verify → notify | vision + permanent-failure detection + act-vs-escalate |
+
+Beyond the three fixtures, the console ships **off-script examples** the agent runs *live*:
+
+- **Novel artifacts** — a worded id (`one-zero-zero-one`), a misspelled no-dash webhook
+  (`shp2002`), a support ticket with a bare number (`3003`). The regex net returns *nothing*;
+  the LLM recovers each and the agent resolves it end-to-end.
+- **An ambiguous artifact** — *"send it to Portland"* → the agent **asks which Portland**
+  before it touches anything, then geocodes your answer against live OpenStreetMap and resolves.
 
 ---
 
@@ -159,11 +177,12 @@ flowchart TD
 | Layer | Component | Responsibility |
 |-------|-----------|----------------|
 | LLM foundation | [`llm.py`](llm.py) | `chat()` — Gemini primary, Groq failover, provider-agnostic tool calling. Never raises. |
-| Ingestion / extraction | [`tools.py`](tools.py) `parse_exception`, `extract_from_document` | Entity extraction under ambiguity (LLM + regex net; vision + OCR cache). |
+| Ingestion / extraction | [`tools.py`](tools.py) `parse_exception`, `extract_from_document`, `_canonical_sid` | Entity extraction under ambiguity (LLM + regex net; vision + OCR cache); id normalization. |
+| Confidence gate 🆕 | [`tools.py`](tools.py) `assess_ambiguity` + [`server.py`](server.py) `/api/clarify` | Per-field confidence on custom input; raises a clarifying question when ambiguous. |
 | Agent loop | [`agent.py`](agent.py) | `plan → tool → observe`; policy prompt; verify/notify/permanent-fail guards. |
 | Resilient execution | [`logistics.py`](logistics.py) `execute_state_change` | Idempotency + retry + transient/permanent failure class over the mock system. |
 | Verify & diff ★ | [`tools.py`](tools.py) `verify_shipment` + [`logistics.py`](logistics.py) `diff` | Re-read authoritative state, compute field-level before/after diff. |
-| Transport / UI | [`server.py`](server.py) + [`web/`](web/) | FastAPI + SSE streaming into an editorial operator console (GSAP). |
+| Transport / UI | [`server.py`](server.py) + [`web/`](web/) | FastAPI + SSE streaming into an editorial console; **plain-language** trace + "prove it" list (`TOOL_PLAIN`, `stepWhy`, `proveList`). |
 
 **Design principles**
 
@@ -181,8 +200,8 @@ flowchart TD
 | Language | Python 3.13 |
 | LLM | Google **Gemini** (primary) → **Groq** (failover), provider-agnostic tool calling |
 | Vision | Gemini multimodal OCR (with on-disk cache fallback) |
-| Backend | **FastAPI** + Uvicorn, **Server-Sent Events** for live streaming |
-| Frontend | Hand-built HTML/CSS/JS, **GSAP + ScrollTrigger**, Fraunces / Space Grotesk / JetBrains Mono, light + dark themes |
+| Backend | **FastAPI** + Uvicorn, **Server-Sent Events** for live streaming; `/api/run` (SSE), `/api/clarify`, `/api/meta`, `/api/shipments` |
+| Frontend | Hand-built HTML/CSS/JS, **GSAP + ScrollTrigger**, Fraunces / Inter / JetBrains Mono, light + dark themes |
 | External API | **OpenStreetMap Nominatim** geocoding (no key) |
 | Notifications | Twilio (WhatsApp) · Resend (email) — gated behind `LIVE ACTIONS` |
 | Assets | Pillow (generates the damaged-label photo) |
@@ -193,10 +212,11 @@ flowchart TD
 
 ```
 Hackathon-Citarise/
-├── server.py              # FastAPI backend + SSE run stream  ← primary entrypoint
+├── server.py              # FastAPI backend + SSE run stream + /api/clarify  ← primary entrypoint
 ├── agent.py               # hand-rolled plan→tool→observe loop, policy prompt, guards
 ├── llm.py                 # Gemini→Groq failover, provider-agnostic tool calling
 ├── tools.py               # tool surface: parse/reads/state-changes/verify/notify + gates
+│                          #   + assess_ambiguity (clarify), _canonical_sid (id normalize)
 ├── logistics.py           # mock system: DB, indexes, seed, snapshot/diff, retry, failure injection
 ├── demo_runner.py         # deterministic offline replay (real tools) when LLMs are rate-limited
 ├── smoke_test.py          # 10 deterministic checks — no real sends
@@ -205,16 +225,18 @@ Hackathon-Citarise/
 ├── app.py                 # legacy Streamlit console (superseded by server.py + web/)
 │
 ├── web/                   # the operator console + landing site
-│   ├── index.html         #   structure (nav, hero, pillars, loop, console, footer)
-│   ├── style.css          #   design system (themes, editorial type, diff/trace styles)
-│   └── main.js            #   GSAP animation + scenario loading + SSE run + rendering
+│   ├── index.html         #   structure (nav, hero, pillars, loop, console, off-script strip)
+│   ├── style.css          #   design system (themes, plain-language trace, clarify + prove-it)
+│   └── main.js            #   GSAP + scenarios + novel examples + clarify flow + SSE + rendering
 │
 ├── assets/
 │   ├── label_SHP-3003.png            # generated damaged-label photo (vision input)
 │   ├── label_SHP-3003.png.ocr.txt    # cached OCR (vision fallback)
-│   └── PRD_Logistics_Exception_Agent.docx   # the product requirements document
+│   ├── PRD_Logistics_Exception_Agent.docx   # product requirements document
+│   └── FRD_LODESTAR.docx             # functional requirements (Word copy)
 │
 ├── docs/screenshots/      # README images
+├── FRD.md                 # functional requirements (the readable, in-repo copy)
 ├── CLAUDE.md              # working rules / tool-writing conventions
 ├── DESIGN.md              # full technical design
 ├── requirements.txt
@@ -297,6 +319,7 @@ code-level failure class, not an LLM guess. → [`logistics.py`](logistics.py) `
 
 | Layer | Mechanism |
 |-------|-----------|
+| Ambiguous input | **Confidence-gated clarifying question** — on a genuinely ambiguous field the agent **pauses and asks** (`assess_ambiguity` / `/api/clarify`) and mutates nothing until the operator answers. |
 | Real outbound sends | `LIVE ACTIONS` toggle (default **off**) gates `notify_customer`; off ⇒ simulated, never calls Twilio/Resend. |
 | Financial actions | `issue_credit` approval gate — `APPROVAL_THRESHOLD_USD` (default $100). At/above it, the tool returns `require_approval` (surfaced as an **approval required** chip); with `REQUIRE_APPROVAL=1` it **blocks** (`awaiting_human_approval`) and mutates nothing until sign-off. |
 | Unrecoverable / high-value | `escalate_to_human` — a first-class terminal action, surfaced as **ESCALATED TO HUMAN** + an explicit *human intervention: required* line. |
@@ -304,6 +327,23 @@ code-level failure class, not an LLM guess. → [`logistics.py`](logistics.py) `
 **Loop guards (safety net)** — [`agent.py`](agent.py): a permanently-failed call can't be
 re-issued (short-circuits to escalation); a state change can't be finalized without
 `verify_shipment`; the customer notification can't be silently dropped.
+
+### Real notifications (verified)
+
+The final step isn't a mock. With **LIVE ACTIONS** on, `notify_customer` sends a genuine
+**shipment-update notification** to the customer on their preferred channel — **email via
+Resend**, **WhatsApp via Twilio** — using the exact message the agent composed. Below is a
+real delivered email from a live run (scenario A, `SHP-1001` rerouted to RapidEx):
+
+> **Subject:** Update on your shipment SHP-1001
+> Hello Alice, your shipment (SHP-1001) experienced a delay due to severe weather at the
+> Chicago hub. We have rerouted your shipment via RapidEx to minimize delays. Your updated
+> ETA is September 1, 2026.
+
+<!-- drop the screenshot at docs/screenshots/06-live-email.png to render it here -->
+
+With LIVE ACTIONS **off** (the default) the same call is simulated and shows a
+`would_send` payload — so nothing leaves the building during a demo unless you opt in.
 
 ---
 
@@ -326,7 +366,7 @@ The spec's six visibility requirements are **first-class UI**, not logs:
 
 Cost and latency are controlled deliberately, not incidentally:
 
-- **Model selection** — small, cost-effective models (`gemini-2.5-flash` / Groq `gpt-oss-20b`), not a frontier model, for a structured tool-selection task.
+- **Model selection** — small, cost-effective models (`gemini-3.6-flash` / Groq `gpt-oss-20b`), not a frontier model, for a structured tool-selection task.
 - **Provider failover** — `llm.py` transparently falls Gemini → Groq, so a rate-limited or down provider never stalls a run (and never wastes a retry on the same dead endpoint).
 - **Fewer model calls** — extraction is **deterministic-first**: the regex/keyword extractor resolves clean artifacts with **zero LLM calls**, and the model is invoked only on genuinely ambiguous input. That's typically **one fewer LLM call per run**.
 - **Compact context** — tool observations are truncated (`_summarize`, 1200 chars) so the resent conversation stays small across turns; one tool call per turn keeps the loop bounded (`MAX_ITERS=12`).
@@ -395,6 +435,7 @@ Full detail in [DESIGN.md](DESIGN.md); working rules in [CLAUDE.md](CLAUDE.md).
 
 ## Docs
 
+- 📋 **[FRD.md](FRD.md)** — functional requirements, readable and mapped to code.
 - 📄 **[PRD](assets/PRD_Logistics_Exception_Agent.docx)** — the full product requirements document.
 - 🏗️ **[DESIGN.md](DESIGN.md)** — technical design, data model, the three pillars, risk table.
 - 🛠️ **[CLAUDE.md](CLAUDE.md)** — architecture + tool-writing conventions.
