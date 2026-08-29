@@ -232,8 +232,8 @@ Hackathon-Citarise/
 ├── assets/
 │   ├── label_SHP-3003.png            # generated damaged-label photo (vision input)
 │   ├── label_SHP-3003.png.ocr.txt    # cached OCR (vision fallback)
-│   ├── PRD_Logistics_Exception_Agent.docx   # product requirements document
-│   └── FRD_LODESTAR.docx             # functional requirements (Word copy)
+│   ├── PRD_Logistics_Exception_Agent.pdf    # product requirements document
+│   └── FRD_LODESTAR.pdf              # functional requirements (PDF copy)
 │
 ├── docs/screenshots/      # README images
 ├── FRD.md                 # functional requirements (the readable, in-repo copy)
@@ -435,8 +435,8 @@ Full detail in [DESIGN.md](DESIGN.md); working rules in [CLAUDE.md](CLAUDE.md).
 
 ## Docs
 
-- 📋 **[FRD.md](FRD.md)** — functional requirements, readable and mapped to code.
-- 📄 **[PRD](assets/PRD_Logistics_Exception_Agent.docx)** — the full product requirements document.
+- 📋 **[FRD (PDF)](assets/FRD_LODESTAR.pdf)** — functional requirements. *(readable in-repo copy: [FRD.md](FRD.md))*
+- 📄 **[PRD (PDF)](assets/PRD_Logistics_Exception_Agent.pdf)** — the full product requirements document.
 - 🏗️ **[DESIGN.md](DESIGN.md)** — technical design, data model, the three pillars, risk table.
 - 🛠️ **[CLAUDE.md](CLAUDE.md)** — architecture + tool-writing conventions.
 
