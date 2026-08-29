@@ -1,0 +1,11 @@
+# Resend/Claude-inspired dark theme. Custom CSS in app.py layers on top of this.
+[theme]
+base = "dark"
+primaryColor = "#6E56CF"
+backgroundColor = "#0A0A0A"
+secondaryBackgroundColor = "#141416"
+textColor = "#EDEDED"
+font = "sans serif"
+
+[server]
+headless = true

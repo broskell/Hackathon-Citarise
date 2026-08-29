@@ -1,0 +1,113 @@
+"""FastAPI backend for the Logistics Exception Agent.
+
+Serves the editorial landing page + live console from web/, and streams the
+agent's trace to the browser over Server-Sent Events. The Python agent core
+(agent.py / tools.py / logistics.py) is untouched — this is only transport.
+
+Run:  python -m uvicorn server:app --port 8000 --reload
+"""
+
+import json
+import queue
+import threading
+
+from fastapi import FastAPI
+from fastapi.responses import JSONResponse, StreamingResponse
+from fastapi.staticfiles import StaticFiles
+
+import llm
+import logistics
+import tools
+from agent import MAX_ITERS, run_agent
+from demo_runner import run_replay
+
+app = FastAPI(title="Logistics Exception Agent")
+
+
+@app.middleware("http")
+async def no_cache(request, call_next):
+    """Never cache the app shell/assets — a demo must always reflect the latest build."""
+    resp = await call_next(request)
+    ct = resp.headers.get("content-type", "")
+    if any(t in ct for t in ("text/html", "text/css", "javascript")):
+        resp.headers["Cache-Control"] = "no-store, must-revalidate"
+    return resp
+
+
+@app.get("/api/meta")
+def meta():
+    """Scenario metadata + raw artifacts the landing/console renders."""
+    out = {}
+    for key, sc in logistics.SCENARIOS.items():
+        item = {"key": key, "label": sc["label"], "source_type": sc["source_type"],
+                "shipment": sc["shipment"]}
+        if sc["source_type"] == "ocr_text":
+            item["artifact_kind"] = "image"
+            item["artifact"] = "/assets/label_SHP-3003.png"
+        else:
+            item["artifact_kind"] = "text"
+            item["artifact"] = sc["artifact"]
+        out[key] = item
+    return {"scenarios": out, "max_iters": MAX_ITERS,
+            "tools": [t["name"] for t in tools.TOOLS]}
+
+
+def _sse(event: str, data) -> str:
+    return f"event: {event}\ndata: {json.dumps(data, default=str)}\n\n"
+
+
+@app.get("/api/run")
+def run(scenario: str = "A", live: int = 0):
+    """Stream the agent run for a scenario as SSE: one `step` event per trace
+    step (live, as they happen), then a final `result` event, then `done`."""
+    if scenario not in logistics.SCENARIOS:
+        return JSONResponse({"error": f"unknown scenario {scenario}"}, status_code=400)
+
+    def gen():
+        q: "queue.Queue" = queue.Queue()
+
+        def on_step(step):
+            q.put(("step", step))
+
+        def worker():
+            try:
+                tools.LIVE_ACTIONS = bool(int(live))
+                goal = logistics.scenario_goal(scenario)
+                # Try the real LLM-planned agent, streaming live.
+                result = run_agent(goal, on_step=on_step)
+                # If BOTH providers were rate-limited, the run stops on step 1 with
+                # no resolution -> fall back to a deterministic replay through the
+                # REAL tools so the demo still completes.
+                stopped = (result.get("state_diff") is None
+                           and str(result.get("answer", "")).startswith("Agent stopped"))
+                if stopped:
+                    q.put(("reset", {}))
+                    q.put(("notice", {"mode": "replay",
+                                      "text": "Both LLM free tiers are rate-limited right now — "
+                                              "streaming a deterministic replay through the REAL "
+                                              "tools (real state diffs, retries, geocoding, vision "
+                                              "fallback). Live LLM planning resumes automatically "
+                                              "when quota returns."}))
+                    result = run_replay(scenario, on_step=on_step)
+                q.put(("result", result))
+            except Exception as e:  # never leave the stream hanging
+                q.put(("agent_error", {"error": f"{type(e).__name__}: {e}"}))
+            finally:
+                q.put(None)
+
+        threading.Thread(target=worker, daemon=True).start()
+        yield _sse("open", {"scenario": scenario})
+        while True:
+            item = q.get()
+            if item is None:
+                break
+            yield _sse(item[0], item[1])
+        yield _sse("done", {})
+
+    return StreamingResponse(gen(), media_type="text/event-stream",
+                             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+
+
+# Static: assets (the label photo) + the built site. Mount LAST so /api wins.
+app.mount("/assets", StaticFiles(directory="assets"), name="assets")
+app.mount("/", StaticFiles(directory="web", html=True), name="web")

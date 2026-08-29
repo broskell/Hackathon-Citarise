@@ -1,0 +1,15 @@
+Here's the extracted text from the image:
+
+**Primary Label Information:**
+*   PRIORITY SHIPPING LABEL
+*   TRACKING #: SHP-3003
+*   ORDER: ORD-3003
+*   CARRIER: SwiftCargo Freight
+*   TO: 500 S Grand Ave, Los Angeles, CA 90071
+
+**Added Note (in red):**
+*   SwiftCargo system DOWN -
+*   cannot scan / cannot deliver
+*   returning to LAX hub - drv #4471
+
+**Tracking Number:** SHP-3003
