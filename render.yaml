@@ -1,0 +1,18 @@
+# Render blueprint — one-click deploy of the LODESTAR server.
+# https://render.com  →  New +  →  Blueprint  →  point at this repo.
+services:
+  - type: web
+    name: lodestar
+    runtime: python
+    plan: free
+    buildCommand: pip install -r requirements-deploy.txt
+    startCommand: uvicorn server:app --host 0.0.0.0 --port $PORT --workers 1
+    envVars:
+      - key: GEMINI_API_KEY
+        sync: false          # set in the Render dashboard (secret)
+      - key: GROQ_API_KEY
+        sync: false          # set in the Render dashboard (secret)
+      - key: LIVE_ACTIONS
+        value: "0"           # keep real customer sends OFF by default
+      - key: APPROVAL_THRESHOLD_USD
+        value: "100"

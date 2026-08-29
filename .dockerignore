@@ -1,0 +1,12 @@
+.env
+.git/
+__pycache__/
+*.pyc
+.venv/
+.chroma/
+node_modules/
+docs/screenshots/
+assets/*.docx
+capture_screens.py
+app.py
+.streamlit/

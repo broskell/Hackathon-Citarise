@@ -1,0 +1,13 @@
+# Slim runtime deps for deploying the server (server.py).
+# Excludes local-only tooling: streamlit (legacy UI), playwright (screenshots),
+# chromadb/tavily (unused). The scenario-C label image is committed, so Pillow
+# is not needed at runtime.
+fastapi
+uvicorn[standard]
+google-genai
+groq
+python-dotenv
+requests
+# optional — only needed if you turn LIVE ACTIONS on (real customer sends):
+twilio
+resend
