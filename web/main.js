@@ -16,7 +16,7 @@ const el = (html) => { const t = document.createElement("template"); t.innerHTML
 const esc = (s) => String(s ?? "").replace(/[&<>]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
 const icon = (n) => `<span class="material-symbols-rounded">${n}</span>`;
 
-let META = null, ACTIVE = "A", running = false;
+let META = null, ACTIVE = "A", running = false, RUN_START = 0;
 
 /* ---------------- GSAP scroll animation ---------------- */
 function initAnim() {
@@ -237,41 +237,81 @@ function mdToHtml(t) {
     .replace(/\n{2,}/g, "<br><br>").replace(/\n/g, "<br>");
 }
 
+// Human-readable summary of what an action changed, for the audit.
+function describeChanges(a) {
+  if (!a.ok) return a.error || `${a.failure_class || "failed"} — no change applied`;
+  const c = a.changed || {};
+  const parts = Object.entries(c)
+    .filter(([k]) => k !== "reason")
+    .map(([k, v]) => {
+      if (k === "exception_code" && (v === null || v === "")) return "exception cleared";
+      if (k === "credit_usd") return `credit → $${v}`;
+      return `${k} → ${v === null ? "—" : v}`;
+    });
+  return parts.join("  ·  ") || "state updated";
+}
+
 function renderResult(res) {
   const p = $("#resultPanel");
-  p.innerHTML = `<div class="result-card"><div class="rc-hd">${icon("check_circle")} Resolution</div>
-    <div class="answer-md" id="answerMd"></div></div>`;
-  typewriteInto($("#answerMd"), mdToHtml(res.answer || "(no answer)"));
   const sd = res.state_diff;
+  const trace = res.trace || [];
+  const audit = (sd && sd.audit_log) || [];
+  const code = sd ? (sd.current_state || {}).exception_code : null;
+  const provider = trace.length ? trace[trace.length - 1].provider : "none";
+  const mode = trace.some(s => s.provider === "replay") ? "replay" : "live";
+  const retries = audit.reduce((n, a) => n + ((a.retry_log || []).length), 0);
+  const dur = RUN_START ? ((Date.now() - RUN_START) / 1000).toFixed(1) + "s" : "—";
+  p.innerHTML = "";
+
+  // 1) DASHBOARD header: status + shipment + metric tiles
   if (sd) {
-    const code = (sd.current_state || {}).exception_code;
-    p.appendChild(el(`<div class="result-card"><div class="rc-hd">${icon("difference")}
-      Verified state diff · <span class="step-tool">${esc(sd.shipment_id)}</span></div>
-      ${statusBadge(sd.resolved, code)}${diffTable(sd.diff)}</div>`));
-    const rows = (sd.audit_log || []).map(a => {
+    const toolCalls = trace.filter(s => s.tool).length;
+    const stats = [
+      [toolCalls, "tool calls"], [audit.length, "state changes"], [retries, "retries"],
+      [res.iterations, "LLM turns"], [dur, "duration"], [mode === "replay" ? "replay" : provider, "engine"],
+    ];
+    p.appendChild(el(`<div class="report-head">
+      <div class="rh-top">${statusBadge(sd.resolved, code)}<span class="rh-ship">${esc(sd.shipment_id)}</span></div>
+      <div class="stat-grid">${stats.map(([v, k]) =>
+        `<div class="stat"><div class="v">${esc(v)}</div><div class="k">${k}</div></div>`).join("")}</div></div>`));
+  }
+
+  // 2) REPORT: the resolution narrative (typewriter)
+  p.appendChild(el(`<div class="result-card"><div class="rc-hd">${icon("summarize")} Resolution report</div>
+    <div class="answer-md" id="answerMd"></div></div>`));
+  typewriteInto($("#answerMd"), mdToHtml(res.answer || "(no answer)"));
+
+  if (sd) {
+    // 3) Verified before/after diff
+    p.appendChild(el(`<div class="result-card"><div class="rc-hd">${icon("difference")} Verified state diff</div>
+      ${diffTable(sd.diff)}</div>`));
+
+    // 4) Detailed, friendly action audit (what each action did)
+    const rows = audit.map(a => {
       const st = a.ok ? `<span class="chip ok">${icon("check")}ok</span>`
-                      : `<span class="chip fail">${icon("error")}${esc(a.failure_class || "fail")}</span>`;
+        : `<span class="chip fail">${icon("error")}${esc(a.failure_class || "fail")}</span>`;
       const rl = (a.retry_log || []).length;
       const retry = rl ? `<span class="chip retry">${icon("replay")}${rl} retr${rl === 1 ? "y" : "ies"}</span>` : "";
-      return `<div class="tl-row"><div class="seq">${a.seq}</div><span class="nm">${esc(a.tool)}</span>
-        ${st}<span class="chip">${icon("repeat")}${a.attempts}×</span>${retry}</div>`;
+      const att = `<span class="chip">${icon("repeat")}${a.attempts}×</span>`;
+      return `<div class="audit-row"><div class="seq">${a.seq}</div>
+        <div class="a-main"><div class="a-name">${icon(TOOL_ICON[a.tool] || "bolt")}${esc(a.tool)}</div>
+        <div class="a-desc">${esc(describeChanges(a))}</div></div>
+        <div class="a-chips">${st}${att}${retry}</div></div>`;
     }).join("");
-    if (rows) p.appendChild(el(`<div class="result-card"><div class="rc-hd">${icon("account_tree")}
-      Resilient-execution audit</div><div>${rows}</div></div>`));
-  }
-  if (sd) {
-    const code = (sd.current_state || {}).exception_code;
+    p.appendChild(el(`<div class="result-card"><div class="rc-hd">${icon("account_tree")} Action audit</div>
+      <div>${rows || '<p style="color:var(--muted);font-size:12px">No state changes were needed.</p>'}</div></div>`));
+
     const human = code === "ESCALATED" ? "REQUIRED — escalated to a human operator"
       : (sd.resolved ? "not required — resolved &amp; verified" : "pending");
     p.appendChild(el(`<div class="foot-note">further action / human intervention: <b style="color:var(--text)">${human}</b></div>`));
   }
-  const prov = (res.trace && res.trace.length) ? res.trace[res.trace.length - 1].provider : "none";
-  p.appendChild(el(`<div class="foot-note">final provider: ${prov} · ${res.iterations} iterations · live actions ${$("#liveToggle").checked ? "on" : "off"}</div>`));
+  p.appendChild(el(`<div class="foot-note">engine: ${mode} (${provider}) · live actions ${$("#liveToggle").checked ? "on" : "off"}</div>`));
 }
 
 function run() {
   if (running) return;
   running = true;
+  RUN_START = Date.now();
   const btn = $("#runBtn");
   btn.disabled = true; btn.style.opacity = ".6";
   showSkeletons();
