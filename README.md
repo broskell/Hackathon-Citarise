@@ -340,7 +340,10 @@ real delivered email from a live run (scenario A, `SHP-1001` rerouted to RapidEx
 > Chicago hub. We have rerouted your shipment via RapidEx to minimize delays. Your updated
 > ETA is September 1, 2026.
 
-<!-- drop the screenshot at docs/screenshots/06-live-email.png to render it here -->
+<div align="center">
+<img src="docs/screenshots/06-live-email.png" alt="Verified customer notification email delivered via Resend (SHP-1001 rerouted to RapidEx)" width="820" />
+<br/><sub><b>Verified</b> — a real customer notification delivered via Resend during a live run.</sub>
+</div>
 
 With LIVE ACTIONS **off** (the default) the same call is simulated and shows a
 `would_send` payload — so nothing leaves the building during a demo unless you opt in.
